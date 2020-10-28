@@ -10,12 +10,13 @@ import (
 )
 
 type App struct {
-	Stdin  io.Reader
-	Stdout io.Writer
-	keyCh  chan rune
-	quitCh chan struct{}
-	runes  []rune
-	Screen tcell.Screen
+	Stdin      io.Reader
+	Stdout     io.Writer
+	keyCh      chan rune
+	quitCh     chan struct{}
+	filterCh   chan struct{}
+	inputRunes []rune
+	Screen     tcell.Screen
 }
 
 func New() (*App, error) {
@@ -31,7 +32,8 @@ func New() (*App, error) {
 	app := &App{
 		Stdin: os.Stdin, Stdout: os.Stdout, // wip
 		keyCh: make(chan rune), Screen: screen,
-		quitCh: make(chan struct{}),
+		quitCh:   make(chan struct{}),
+		filterCh: make(chan struct{}),
 	}
 	return app, nil
 }
@@ -39,14 +41,16 @@ func New() (*App, error) {
 func (app *App) Run() error {
 	go app.handleEvent()
 	go app.handleKeyInput()
+	go app.doFilter()
 
+	app.filterCh <- struct{}{}
 	app.render()
 
 	<-app.quitCh
 
 	app.exit()
 
-	fmt.Printf("debug: %s\n", string(app.runes))
+	fmt.Printf("debug: %s\n", string(app.inputRunes))
 
 	return nil
 }
@@ -55,9 +59,17 @@ func (app *App) handleKeyInput() {
 	for {
 		r := <-app.keyCh
 
-		app.runes = append(app.runes, r)
-
+		app.inputRunes = append(app.inputRunes, r)
+		app.filterCh <- struct{}{}
 		app.render()
+	}
+}
+
+func (app *App) doFilter() {
+	// 前に実行してたやつをキャンセルしたほうがええかも
+	for {
+		<-app.filterCh
+
 	}
 }
 
@@ -68,7 +80,7 @@ func (app *App) render() {
 	for i, r := range []rune(query) {
 		app.Screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
 	}
-	for i, r := range app.runes {
+	for i, r := range app.inputRunes {
 		app.Screen.SetContent(i+queryLen+1, 0, r, nil, tcell.StyleDefault)
 	}
 	app.Screen.Show()
