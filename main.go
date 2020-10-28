@@ -29,7 +29,8 @@ func New() (*App, error) {
 	}
 
 	app := &App{
-		Stdin: os.Stdin, Stdout: os.Stdout, keyCh: make(chan rune), Screen: screen,
+		Stdin: os.Stdin, Stdout: os.Stdout, // wip
+		keyCh: make(chan rune), Screen: screen,
 		quitCh: make(chan struct{}),
 	}
 	return app, nil
@@ -38,6 +39,8 @@ func New() (*App, error) {
 func (app *App) Run() error {
 	go app.handleEvent()
 	go app.handleKeyInput()
+
+	app.render()
 
 	<-app.quitCh
 
@@ -53,11 +56,22 @@ func (app *App) handleKeyInput() {
 		r := <-app.keyCh
 
 		app.runes = append(app.runes, r)
-		for i, r := range app.runes {
-			app.Screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
-		}
-		app.Screen.Show()
+
+		app.render()
 	}
+}
+
+func (app *App) render() {
+	query := []rune("[QUERY]")
+	queryLen := len(query)
+
+	for i, r := range []rune(query) {
+		app.Screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
+	}
+	for i, r := range app.runes {
+		app.Screen.SetContent(i+queryLen+1, 0, r, nil, tcell.StyleDefault)
+	}
+	app.Screen.Show()
 }
 
 func (app *App) handleEvent() {
