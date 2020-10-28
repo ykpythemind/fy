@@ -4,30 +4,46 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 	"unicode/utf8"
-)
 
-const (
-	ControlA = 1
+	"github.com/gdamore/tcell/v2"
 )
 
 type App struct {
 	Stdin  io.Reader
 	Stdout io.Writer
 	keyCh  chan rune
-	strs   []rune
+	quitCh chan struct{}
+	runes  []rune
+	Screen tcell.Screen
 }
 
-func New() *App {
-	app := &App{Stdin: os.Stdin, Stdout: os.Stdout, keyCh: make(chan rune)}
-	return app
+func New() (*App, error) {
+	screen, err := tcell.NewScreen()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := screen.Init(); err != nil {
+		return nil, err
+	}
+
+	app := &App{
+		Stdin: os.Stdin, Stdout: os.Stdout, keyCh: make(chan rune), Screen: screen,
+		quitCh: make(chan struct{}),
+	}
+	return app, nil
 }
 
 func (app *App) Run() error {
-	go app.readKeys()
+	go app.handleEvent()
+	go app.handleKeyInput()
 
-	app.handleKeyInput()
+	<-app.quitCh
+
+	app.exit()
+
+	fmt.Printf("debug: %s\n", string(app.runes))
 
 	return nil
 }
@@ -36,36 +52,33 @@ func (app *App) handleKeyInput() {
 	for {
 		r := <-app.keyCh
 
-		switch r {
-		case ControlA:
-			// exit
-			str := string(app.strs)
-			_, _ = app.Stdout.Write([]byte(str))
-			return
-		default:
-			fmt.Println(r)
-			fmt.Println("aaaaa")
-			app.strs = append(app.strs, r)
+		app.runes = append(app.runes, r)
+		for i, r := range app.runes {
+			app.Screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
 		}
+		app.Screen.Show()
 	}
 }
 
-func (app *App) readKeys() {
-	buf := make([]byte, 64)
-
+func (app *App) handleEvent() {
 	for {
-		if n, err := syscall.Read(0, buf); err == nil {
-			b := buf[:n]
-			for {
-				r, n := app.parseKey(b)
+		ev := app.Screen.PollEvent()
 
-				if n == 0 {
-					break
-				}
-
-				app.keyCh <- r
-				b = buf[n:]
+		switch ev := ev.(type) {
+		case *tcell.EventKey:
+			key := ev.Key()
+			if key == tcell.KeyEscape {
+				close(app.quitCh)
+				return
 			}
+			if _, isSpecialKey := tcell.KeyNames[key]; isSpecialKey {
+				// ignore
+				continue
+			}
+			r := ev.Rune()
+			app.keyCh <- r
+		case *tcell.EventResize:
+			app.Screen.Sync()
 		}
 	}
 }
@@ -74,12 +87,20 @@ func (app *App) parseKey(b []byte) (rune, int) {
 	return utf8.DecodeRune(b)
 }
 
-func main() {
-	app := New()
+func (app *App) exit() {
+	app.Screen.Fini()
+}
 
-	err := app.Run()
+func main() {
+	app, err := New()
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprint(os.Stdout, err)
+		os.Exit(1)
+	}
+
+	err = app.Run()
+	if err != nil {
+		fmt.Fprint(os.Stdout, err)
 		os.Exit(1)
 	}
 }
