@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"unicode/utf8"
 
@@ -10,11 +13,13 @@ import (
 )
 
 type App struct {
-	Stdin      io.Reader
+	In         io.ReadSeeker
 	Stdout     io.Writer
 	keyCh      chan rune
 	quitCh     chan struct{}
-	filterCh   chan struct{}
+	filterCh   chan FilterResult
+	filter     Filter
+	filtered   FilterResult
 	inputRunes []rune
 	Screen     tcell.Screen
 }
@@ -29,11 +34,22 @@ func New() (*App, error) {
 		return nil, err
 	}
 
+	filter := &FilterImpl{}
+
+	// wip---
+	by, err := ioutil.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, err
+	}
+	reader := bytes.NewReader(by)
+	// ---
+
 	app := &App{
-		Stdin: os.Stdin, Stdout: os.Stdout, // wip
+		In: reader, Stdout: os.Stdout, // wip
 		keyCh: make(chan rune), Screen: screen,
 		quitCh:   make(chan struct{}),
-		filterCh: make(chan struct{}),
+		filterCh: make(chan FilterResult),
+		filter:   filter,
 	}
 	return app, nil
 }
@@ -43,7 +59,6 @@ func (app *App) Run() error {
 	go app.handleKeyInput()
 	go app.doFilter()
 
-	app.filterCh <- struct{}{}
 	app.render()
 
 	<-app.quitCh
@@ -60,17 +75,24 @@ func (app *App) handleKeyInput() {
 		r := <-app.keyCh
 
 		app.inputRunes = append(app.inputRunes, r)
-		app.filterCh <- struct{}{}
+		go app.doFilter()
 		app.render()
 	}
 }
 
 func (app *App) doFilter() {
 	// 前に実行してたやつをキャンセルしたほうがええかも
-	for {
-		<-app.filterCh
 
+	context := context.Background()
+	err := app.filter.Run(context, app.In, app.filterCh)
+	if err != nil {
+		// todo do some handling
+		return
 	}
+
+	result := <-app.filterCh
+	app.filtered = result
+	app.render()
 }
 
 func (app *App) render() {
@@ -83,6 +105,13 @@ func (app *App) render() {
 	for i, r := range app.inputRunes {
 		app.Screen.SetContent(i+queryLen+1, 0, r, nil, tcell.StyleDefault)
 	}
+
+	for i, line := range app.filtered.Matched {
+		for x, r := range []rune(line) {
+			app.Screen.SetContent(x, i+1, r, nil, tcell.StyleDefault)
+		}
+	}
+
 	app.Screen.Show()
 }
 
