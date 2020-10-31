@@ -1,8 +1,9 @@
-package main
+package fy
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,23 +13,34 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-type App struct {
+type Cli struct {
 	In         io.ReadSeeker
 	Stdout     io.Writer
 	keyCh      chan rune
 	quitCh     chan struct{}
-	filterCh   chan FilterResult
+	filterCh   chan *FilterResult
 	filter     Filter
-	filtered   FilterResult
+	filtered   *FilterResult
 	inputRunes []rune
 	Screen     tcell.Screen
 }
 
-func New() (*App, error) {
+func New() (*Cli, error) {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return nil, err
 	}
+
+	// wip---
+	by, err := ioutil.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, err
+	}
+	if len(by) == 0 {
+		return nil, errors.New("no input") // wip
+	}
+	reader := bytes.NewReader(by)
+	// ---
 
 	if err := screen.Init(); err != nil {
 		return nil, err
@@ -36,25 +48,18 @@ func New() (*App, error) {
 
 	filter := &FilterImpl{}
 
-	// wip---
-	by, err := ioutil.ReadAll(os.Stdin)
-	if err != nil {
-		return nil, err
-	}
-	reader := bytes.NewReader(by)
-	// ---
-
-	app := &App{
+	app := &Cli{
 		In: reader, Stdout: os.Stdout, // wip
 		keyCh: make(chan rune), Screen: screen,
 		quitCh:   make(chan struct{}),
-		filterCh: make(chan FilterResult),
+		filterCh: make(chan *FilterResult),
 		filter:   filter,
+		filtered: &FilterResult{},
 	}
 	return app, nil
 }
 
-func (app *App) Run() error {
+func (app *Cli) Run() error {
 	go app.handleEvent()
 	go app.handleKeyInput()
 	go app.doFilter()
@@ -66,11 +71,12 @@ func (app *App) Run() error {
 	app.exit()
 
 	fmt.Printf("debug: %s\n", string(app.inputRunes))
+	fmt.Printf("filtered: %v\n", app.filtered)
 
 	return nil
 }
 
-func (app *App) handleKeyInput() {
+func (app *Cli) handleKeyInput() {
 	for {
 		r := <-app.keyCh
 
@@ -80,7 +86,7 @@ func (app *App) handleKeyInput() {
 	}
 }
 
-func (app *App) doFilter() {
+func (app *Cli) doFilter() {
 	// 前に実行してたやつをキャンセルしたほうがええかも
 
 	context := context.Background()
@@ -95,7 +101,7 @@ func (app *App) doFilter() {
 	app.render()
 }
 
-func (app *App) render() {
+func (app *Cli) render() {
 	query := []rune("[QUERY]")
 	queryLen := len(query)
 
@@ -115,7 +121,7 @@ func (app *App) render() {
 	app.Screen.Show()
 }
 
-func (app *App) handleEvent() {
+func (app *Cli) handleEvent() {
 	for {
 		ev := app.Screen.PollEvent()
 
@@ -138,24 +144,10 @@ func (app *App) handleEvent() {
 	}
 }
 
-func (app *App) parseKey(b []byte) (rune, int) {
+func (app *Cli) parseKey(b []byte) (rune, int) {
 	return utf8.DecodeRune(b)
 }
 
-func (app *App) exit() {
+func (app *Cli) exit() {
 	app.Screen.Fini()
-}
-
-func main() {
-	app, err := New()
-	if err != nil {
-		fmt.Fprint(os.Stdout, err)
-		os.Exit(1)
-	}
-
-	err = app.Run()
-	if err != nil {
-		fmt.Fprint(os.Stdout, err)
-		os.Exit(1)
-	}
 }

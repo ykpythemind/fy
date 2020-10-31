@@ -1,4 +1,4 @@
-package main
+package fy
 
 import (
 	"bufio"
@@ -14,20 +14,20 @@ type FilterResult struct {
 }
 
 type Filter interface {
-	Run(context context.Context, reader io.ReadSeeker, resultCh chan<- FilterResult) error
+	Run(context context.Context, reader io.ReadSeeker, resultCh chan<- *FilterResult) error
 	Quit()
 }
 
 type FilterImpl struct{}
 
-func (f *FilterImpl) Run(context context.Context, reader io.ReadSeeker, resultCh chan<- FilterResult) error {
+func (f *FilterImpl) Run(context context.Context, reader io.ReadSeeker, resultCh chan<- *FilterResult) error {
 	_, err := reader.Seek(0, 0)
 	if err != nil {
 		return err
 	}
 
 	done := make(chan struct{})
-	result := FilterResult{Matched: []string{}}
+	result := &FilterResult{Matched: []string{}}
 
 	go func() {
 		defer func() { done <- struct{}{} }()
@@ -35,7 +35,8 @@ func (f *FilterImpl) Run(context context.Context, reader io.ReadSeeker, resultCh
 		// scanning...
 		scanner := bufio.NewScanner(reader)
 		for scanner.Scan() {
-			result.Matched = append(result.Matched, scanner.Text())
+			text := scanner.Text()
+			result.Matched = append(result.Matched, text)
 		}
 		if err := scanner.Err(); err != nil {
 			fmt.Fprintln(os.Stderr, "reading standard input:", err)

@@ -1,4 +1,4 @@
-module github.com/ykpythemind/yk
+module github.com/ykpythemind/fy
 
 go 1.13
 
