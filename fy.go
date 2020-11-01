@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/mattn/go-isatty"
 )
 
 const queryMarker = "[QUERY]"
@@ -37,15 +38,15 @@ func New(debug bool) (*CLI, error) {
 		return nil, err
 	}
 
+	in := os.Stdin
+	if isatty.IsTerminal(in.Fd()) {
+		return nil, errors.New("you must supply something to work with via stdin")
+	}
+
 	// todo: readallやめる
-	by, err := ioutil.ReadAll(os.Stdin)
+	by, err := ioutil.ReadAll(in)
 	if err != nil {
 		return nil, err
-	}
-	if len(by) == 0 {
-		// pecoは以下のエラー出す
-		//  Error: failed to setup input source: you must supply something to work with via filename or stdin
-		return nil, errors.New("no input") // wip
 	}
 	reader := bytes.NewReader(by)
 	// ---
@@ -75,7 +76,7 @@ func New(debug bool) (*CLI, error) {
 func (cli *CLI) Run() error {
 	go cli.handleEvent()
 	go cli.handleKeyInput()
-	go cli.doFilter()
+	go cli.filterInput()
 
 	selected := false
 
@@ -108,11 +109,11 @@ func (cli *CLI) handleKeyInput() {
 		cli.inputRunes = append(cli.inputRunes, r)
 		cli.mu.Unlock()
 
-		go cli.doFilter()
+		go cli.filterInput()
 	}
 }
 
-func (cli *CLI) doFilter() {
+func (cli *CLI) filterInput() {
 	context := context.TODO()
 
 	// フィルターをキャンセルできるようにしたいけど...
@@ -259,7 +260,7 @@ func (cli *CLI) backspace() {
 	cli.inputRunes = cli.inputRunes[:len(cli.inputRunes)-1]
 	cli.mu.Unlock()
 
-	cli.doFilter()
+	cli.filterInput()
 	cli.render()
 }
 
