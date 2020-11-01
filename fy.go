@@ -27,20 +27,32 @@ type CLI struct {
 	current    matched
 	matched    []matched
 	inputRunes []rune
-	Screen     tcell.Screen
+	screen     tcell.Screen
 	mu         sync.Mutex
 	debug      bool
+	needClose  bool
 }
 
-func New(debug bool) (*CLI, error) {
+func New(args []string, debug bool) (*CLI, error) {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return nil, err
 	}
 
-	in := os.Stdin
-	if isatty.IsTerminal(in.Fd()) {
-		return nil, errors.New("you must supply something to work with via stdin")
+	var in io.Reader
+	needClose := false
+
+	if len(args) == 2 {
+		f, err := os.Open(args[1])
+		if err != nil {
+			return nil, err
+		}
+		in = f
+		needClose = true
+	} else if !isatty.IsTerminal(os.Stdin.Fd()) {
+		in = os.Stdin
+	} else {
+		return nil, errors.New("you must supply something to work with via stdin or filename")
 	}
 
 	// todo: readallやめる
@@ -58,17 +70,18 @@ func New(debug bool) (*CLI, error) {
 	filter := &cliFilter{}
 
 	cli := &CLI{
-		input:    reader,
-		output:   os.Stdout, // wip
-		keyCh:    make(chan rune),
-		Screen:   screen,
-		quitCh:   make(chan struct{}),
-		filterCh: make(chan []matched, 1),
-		selectCh: make(chan struct{}),
-		current:  matched{},
-		filter:   filter,
-		matched:  []matched{},
-		debug:    debug,
+		input:     reader,
+		output:    os.Stdout, // wip
+		keyCh:     make(chan rune),
+		screen:    screen,
+		quitCh:    make(chan struct{}),
+		filterCh:  make(chan []matched, 1),
+		selectCh:  make(chan struct{}),
+		current:   matched{},
+		filter:    filter,
+		matched:   []matched{},
+		debug:     debug,
+		needClose: needClose,
 	}
 	return cli, nil
 }
@@ -142,18 +155,18 @@ func (cli *CLI) render() {
 	queryLen := len(query)
 	queryLineHeight := 1
 
-	cli.Screen.Clear()
+	cli.screen.Clear()
 
 	// query line
 	for i, r := range []rune(query) {
-		cli.Screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
+		cli.screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
 	}
 	for i, r := range cli.inputRunes {
-		cli.Screen.SetContent(i+queryLen+queryLineHeight, 0, r, nil, tcell.StyleDefault)
+		cli.screen.SetContent(i+queryLen+queryLineHeight, 0, r, nil, tcell.StyleDefault)
 	}
 
 	// matched lines
-	wx, wy := cli.Screen.Size()
+	wx, wy := cli.screen.Size()
 	matchedLinesHeight := wy - queryLineHeight
 
 	current := cli.current
@@ -173,7 +186,7 @@ func (cli *CLI) render() {
 
 			if matchedline {
 				for i := 0; i < wx; i++ {
-					cli.Screen.SetContent(i, current.index+queryLineHeight, ' ', nil, st)
+					cli.screen.SetContent(i, current.index+queryLineHeight, ' ', nil, st)
 				}
 			}
 
@@ -182,17 +195,17 @@ func (cli *CLI) render() {
 				if ma.pos1 <= x && x < ma.pos2 {
 					s = st.Bold(true)
 				}
-				cli.Screen.SetContent(x, i+queryLineHeight, r, nil, s)
+				cli.screen.SetContent(x, i+queryLineHeight, r, nil, s)
 			}
 		}
 	}
 
-	cli.Screen.Show()
+	cli.screen.Show()
 }
 
 func (cli *CLI) handleEvent() {
 	for {
-		ev := cli.Screen.PollEvent()
+		ev := cli.screen.PollEvent()
 
 		switch ev := ev.(type) {
 		case *tcell.EventKey:
@@ -233,7 +246,7 @@ func (cli *CLI) handleEvent() {
 			r := ev.Rune()
 			cli.keyCh <- r
 		case *tcell.EventResize:
-			cli.Screen.Sync()
+			cli.screen.Sync()
 		}
 	}
 }
@@ -269,5 +282,11 @@ func (cli *CLI) backspace() {
 }
 
 func (cli *CLI) exit() {
-	cli.Screen.Fini()
+	cli.screen.Fini()
+
+	if cli.needClose {
+		if in, ok := cli.input.(io.Closer); ok {
+			in.Close()
+		}
+	}
 }

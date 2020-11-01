@@ -14,7 +14,7 @@ func main() {
 
 	flag.Parse()
 
-	app, err := fy.New(debug)
+	app, err := fy.New(os.Args, debug)
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
 		os.Exit(1)
