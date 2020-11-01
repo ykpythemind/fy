@@ -20,9 +20,9 @@ type CLI struct {
 	Stdout     io.Writer
 	keyCh      chan rune
 	quitCh     chan struct{}
-	filterCh   chan filterResult
+	filterCh   chan []matched
 	filter     filter
-	filtered   filterResult
+	matched    []matched
 	inputRunes []rune
 	Screen     tcell.Screen
 	mu         sync.Mutex
@@ -56,9 +56,9 @@ func New() (*CLI, error) {
 		Stdout: os.Stdout, // wip
 		keyCh:  make(chan rune), Screen: screen,
 		quitCh:   make(chan struct{}),
-		filterCh: make(chan filterResult, 1),
+		filterCh: make(chan []matched, 1),
 		filter:   filter,
-		filtered: filterResult{},
+		matched:  []matched{},
 	}
 	return cli, nil
 }
@@ -75,7 +75,7 @@ func (cli *CLI) Run() error {
 	cli.exit()
 
 	fmt.Printf("debug: %s\n", string(cli.inputRunes))
-	fmt.Printf("filtered: %v\n", cli.filtered)
+	fmt.Printf("matched: %v\n", cli.matched)
 
 	return nil
 }
@@ -97,7 +97,7 @@ func (cli *CLI) doFilter() {
 	// 前に実行してたやつをキャンセルしたほうがええかも
 	context := context.Background()
 
-	err := cli.filter.Run(context, cli.In, cli.filterCh)
+	err := cli.filter.Run(context, string(cli.inputRunes), cli.In, cli.filterCh)
 	if err != nil {
 		// todo do some handling
 		return
@@ -106,32 +106,49 @@ func (cli *CLI) doFilter() {
 	result := <-cli.filterCh
 
 	cli.mu.Lock()
-	cli.filtered = result
+	cli.matched = result
 	cli.mu.Unlock()
 }
 
 func (cli *CLI) render() {
+	cli.mu.Lock()
+	defer cli.mu.Unlock()
+
 	query := []rune(queryMarker)
 	queryLen := len(query)
+	queryLineHeight := 1
+
+	cli.Screen.Clear()
 
 	for i, r := range []rune(query) {
 		cli.Screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
 	}
 	for i, r := range cli.inputRunes {
-		cli.Screen.SetContent(i+queryLen+1, 0, r, nil, tcell.StyleDefault)
+		cli.Screen.SetContent(i+queryLen+queryLineHeight, 0, r, nil, tcell.StyleDefault)
 	}
 
 	_, y := cli.Screen.Size()
-	matchedLinesHeight := y - 1
+	matchedLinesHeight := y - queryLineHeight
 
-	for i, line := range cli.filtered.matched {
-		if i > matchedLinesHeight {
+	for i := 0; i < matchedLinesHeight; i++ {
+		if i > len(cli.matched)-1 {
 			break
-		}
-		for x, r := range []rune(line) {
-			cli.Screen.SetContent(x, i+1, r, nil, tcell.StyleDefault)
+		} else {
+			ma := cli.matched[i]
+			for x, r := range []rune(ma.line) {
+				cli.Screen.SetContent(x, i+queryLineHeight, r, nil, tcell.StyleDefault)
+			}
 		}
 	}
+
+	// for i, ma := range cli.matched {
+	// 	if i > matchedLinesHeight {
+	// 		break
+	// 	}
+	// 	for x, r := range []rune(ma.line) {
+	// 		cli.Screen.SetContent(x, i+1, r, nil, tcell.StyleDefault)
+	// 	}
+	// }
 
 	cli.Screen.Show()
 }
@@ -147,6 +164,12 @@ func (cli *CLI) handleEvent() {
 				close(cli.quitCh)
 				return
 			}
+
+			if key == tcell.KeyBackspace || key == tcell.KeyBackspace2 || key == tcell.KeyDelete {
+				go cli.backspace()
+				continue
+			}
+
 			if _, isSpecialKey := tcell.KeyNames[key]; isSpecialKey {
 				// ignore
 				continue
@@ -157,6 +180,19 @@ func (cli *CLI) handleEvent() {
 			cli.Screen.Sync()
 		}
 	}
+}
+
+func (cli *CLI) backspace() {
+	if len(cli.inputRunes) == 0 {
+		return
+	}
+
+	cli.mu.Lock()
+	cli.inputRunes = cli.inputRunes[:len(cli.inputRunes)-1]
+	cli.mu.Unlock()
+
+	cli.doFilter()
+	cli.render()
 }
 
 func (cli *CLI) exit() {
