@@ -12,6 +12,8 @@ import (
 type matched struct {
 	line  string
 	index int
+	pos1  int
+	pos2  int
 }
 
 type filter interface {
@@ -90,9 +92,9 @@ func findMatches(input string, lines []string) ([]matched, error) {
 				continue
 			}
 			tmp = append(tmp, matched{
-				line: f,
-				// pos1:     len([]rune(f[0:ms[0][2]])),
-				// pos2:     len([]rune(f[0:ms[0][3]])),
+				line:  f,
+				pos1:  len([]rune(f[0:ms[0][2]])),
+				pos2:  len([]rune(f[0:ms[0][3]])),
 				index: len(tmp),
 			})
 		}

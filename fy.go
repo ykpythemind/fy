@@ -178,7 +178,11 @@ func (cli *CLI) render() {
 			}
 
 			for x, r := range []rune(ma.line) {
-				cli.Screen.SetContent(x, i+queryLineHeight, r, nil, st)
+				s := st
+				if ma.pos1 <= x && x < ma.pos2 {
+					s = st.Bold(true)
+				}
+				cli.Screen.SetContent(x, i+queryLineHeight, r, nil, s)
 			}
 		}
 	}

@@ -12,7 +12,7 @@ func TestFindMatches(t *testing.T) {
 		"piyo",
 		"pipipihoa",
 		"123",
-		"hogepiyo",
+		"hogefupiyo",
 	}
 
 	type testcase struct {
@@ -26,16 +26,16 @@ func TestFindMatches(t *testing.T) {
 			input: "hoge",
 			lines: defaultLines,
 			expect: []matched{
-				{line: "hogepiyo", index: 0},
+				{line: "hogefupiyo", index: 0, pos1: 0, pos2: 4},
 			},
 		},
 		{
 			input: "pi",
 			lines: defaultLines,
 			expect: []matched{
-				{line: "piyo", index: 0},
-				{line: "pipipihoa", index: 1},
-				{line: "hogepiyo", index: 2},
+				{line: "piyo", index: 0, pos1: 0, pos2: 2},
+				{line: "pipipihoa", index: 1, pos1: 4, pos2: 6},
+				{line: "hogefupiyo", index: 2, pos1: 6, pos2: 8},
 			},
 		},
 	}
