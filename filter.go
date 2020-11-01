@@ -10,7 +10,8 @@ import (
 )
 
 type matched struct {
-	line string
+	line  string
+	index int
 }
 
 type filter interface {
@@ -69,7 +70,8 @@ func findMatches(input string, lines []string) ([]matched, error) {
 		tmp = make([]matched, len(lines))
 		for n, l := range lines {
 			tmp[n] = matched{
-				line: l,
+				line:  l,
+				index: n,
 			}
 		}
 	} else {
@@ -91,7 +93,7 @@ func findMatches(input string, lines []string) ([]matched, error) {
 				line: f,
 				// pos1:     len([]rune(f[0:ms[0][2]])),
 				// pos2:     len([]rune(f[0:ms[0][3]])),
-				// index:    len(tmp),
+				index: len(tmp),
 			})
 		}
 	}

@@ -22,6 +22,8 @@ type CLI struct {
 	quitCh     chan struct{}
 	filterCh   chan []matched
 	filter     filter
+	selectCh   chan struct{}
+	current    matched
 	matched    []matched
 	inputRunes []rune
 	Screen     tcell.Screen
@@ -35,12 +37,14 @@ func New(debug bool) (*CLI, error) {
 		return nil, err
 	}
 
-	// wip---
+	// todo:
 	by, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
 		return nil, err
 	}
 	if len(by) == 0 {
+		// pecoは以下のエラー出す
+		//  Error: failed to setup input source: you must supply something to work with via filename or stdin
 		return nil, errors.New("no input") // wip
 	}
 	reader := bytes.NewReader(by)
@@ -53,11 +57,14 @@ func New(debug bool) (*CLI, error) {
 	filter := &cliFilter{}
 
 	cli := &CLI{
-		input:  reader,
-		output: os.Stdout, // wip
-		keyCh:  make(chan rune), Screen: screen,
+		input:    reader,
+		output:   os.Stdout, // wip
+		keyCh:    make(chan rune),
+		Screen:   screen,
 		quitCh:   make(chan struct{}),
 		filterCh: make(chan []matched, 1),
+		selectCh: make(chan struct{}),
+		current:  matched{},
 		filter:   filter,
 		matched:  []matched{},
 		debug:    debug,
@@ -72,9 +79,19 @@ func (cli *CLI) Run() error {
 
 	cli.render()
 
-	<-cli.quitCh
+	selected := false
+
+	select {
+	case <-cli.quitCh:
+	case <-cli.selectCh:
+		selected = true
+	}
 
 	cli.exit()
+
+	if selected {
+		fmt.Fprintf(cli.output, "%s", cli.current.line)
+	}
 
 	if cli.debug {
 		fmt.Printf("debug: %s\n", string(cli.inputRunes))
@@ -111,6 +128,9 @@ func (cli *CLI) doFilter() {
 
 	cli.mu.Lock()
 	cli.matched = result
+	if len(result) > 0 {
+		cli.current = result[0]
+	}
 	cli.mu.Unlock()
 }
 
