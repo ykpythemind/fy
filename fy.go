@@ -77,8 +77,6 @@ func (cli *CLI) Run() error {
 	go cli.handleKeyInput()
 	go cli.doFilter()
 
-	cli.render()
-
 	selected := false
 
 	select {
@@ -144,6 +142,7 @@ func (cli *CLI) render() {
 
 	cli.Screen.Clear()
 
+	// query line
 	for i, r := range []rune(query) {
 		cli.Screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
 	}
@@ -151,16 +150,33 @@ func (cli *CLI) render() {
 		cli.Screen.SetContent(i+queryLen+queryLineHeight, 0, r, nil, tcell.StyleDefault)
 	}
 
-	_, y := cli.Screen.Size()
-	matchedLinesHeight := y - queryLineHeight
+	// matched lines
+	wx, wy := cli.Screen.Size()
+	matchedLinesHeight := wy - queryLineHeight
+
+	current := cli.current
 
 	for i := 0; i < matchedLinesHeight; i++ {
 		if i > len(cli.matched)-1 {
 			break
 		} else {
 			ma := cli.matched[i]
+			st := tcell.StyleDefault
+			matchedline := false
+
+			if ma.index == current.index {
+				matchedline = true
+				st = st.Background(tcell.NewRGBColor(200, 200, 0))
+			}
+
+			if matchedline {
+				for i := 0; i < wx; i++ {
+					cli.Screen.SetContent(i, current.index+queryLineHeight, ' ', nil, st)
+				}
+			}
+
 			for x, r := range []rune(ma.line) {
-				cli.Screen.SetContent(x, i+queryLineHeight, r, nil, tcell.StyleDefault)
+				cli.Screen.SetContent(x, i+queryLineHeight, r, nil, st)
 			}
 		}
 	}
