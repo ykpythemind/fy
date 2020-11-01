@@ -110,14 +110,13 @@ func (cli *CLI) handleKeyInput() {
 		cli.mu.Unlock()
 
 		go cli.doFilter()
-		cli.render()
 	}
 }
 
 func (cli *CLI) doFilter() {
-	// 前に実行してたやつをキャンセルしたほうがええかも
-	context := context.Background()
+	context := context.TODO()
 
+	// フィルターをキャンセルできるようにしたいけど...
 	err := cli.filter.Run(context, string(cli.inputRunes), cli.input, cli.filterCh)
 	if err != nil {
 		// todo do some handling
@@ -132,6 +131,7 @@ func (cli *CLI) doFilter() {
 		cli.current = result[0]
 	}
 	cli.mu.Unlock()
+	cli.render()
 }
 
 func (cli *CLI) render() {
@@ -177,6 +177,11 @@ func (cli *CLI) handleEvent() {
 			key := ev.Key()
 			if key == tcell.KeyEscape {
 				close(cli.quitCh)
+				return
+			}
+
+			if key == tcell.KeyEnter {
+				close(cli.selectCh)
 				return
 			}
 

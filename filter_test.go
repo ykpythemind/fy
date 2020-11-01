@@ -26,16 +26,16 @@ func TestFindMatches(t *testing.T) {
 			input: "hoge",
 			lines: defaultLines,
 			expect: []matched{
-				{line: "hogepiyo"},
+				{line: "hogepiyo", index: 0},
 			},
 		},
 		{
 			input: "pi",
 			lines: defaultLines,
 			expect: []matched{
-				{line: "piyo"},
-				{line: "pipipihoa"},
-				{line: "hogepiyo"},
+				{line: "piyo", index: 0},
+				{line: "pipipihoa", index: 1},
+				{line: "hogepiyo", index: 2},
 			},
 		},
 	}
