@@ -8,26 +8,26 @@ import (
 	"os"
 )
 
-type FilterResult struct {
-	Error   error
-	Matched []string
+type filterResult struct {
+	matched []string
 }
 
-type Filter interface {
-	Run(context context.Context, reader io.ReadSeeker, resultCh chan<- *FilterResult) error
-	Quit()
+type filter interface {
+	Run(context context.Context, reader io.ReadSeeker, resultCh chan<- filterResult) error
 }
 
-type FilterImpl struct{}
+type cliFilter struct{}
 
-func (f *FilterImpl) Run(context context.Context, reader io.ReadSeeker, resultCh chan<- *FilterResult) error {
-	_, err := reader.Seek(0, 0)
+func (f *cliFilter) Run(context context.Context, reader io.ReadSeeker, resultCh chan<- filterResult) error {
+	var err error
+
+	_, err = reader.Seek(0, 0) // todo
 	if err != nil {
 		return err
 	}
 
 	done := make(chan struct{})
-	result := &FilterResult{Matched: []string{}}
+	result := filterResult{matched: []string{}}
 
 	go func() {
 		defer func() { done <- struct{}{} }()
@@ -36,10 +36,11 @@ func (f *FilterImpl) Run(context context.Context, reader io.ReadSeeker, resultCh
 		scanner := bufio.NewScanner(reader)
 		for scanner.Scan() {
 			text := scanner.Text()
-			result.Matched = append(result.Matched, text)
+			result.matched = append(result.matched, text)
 		}
-		if err := scanner.Err(); err != nil {
-			fmt.Fprintln(os.Stderr, "reading standard input:", err)
+		if serr := scanner.Err(); serr != nil {
+			fmt.Fprintln(os.Stderr, "reading standard input:", serr)
+			err = serr
 			return
 		}
 	}()
@@ -48,8 +49,5 @@ func (f *FilterImpl) Run(context context.Context, reader io.ReadSeeker, resultCh
 	<-done
 	resultCh <- result
 
-	return nil
-}
-
-func (f *FilterImpl) Quit() {
+	return err
 }

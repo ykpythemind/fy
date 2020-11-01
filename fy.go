@@ -8,24 +8,27 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"unicode/utf8"
+	"sync"
 
 	"github.com/gdamore/tcell/v2"
 )
 
-type Cli struct {
+const queryMarker = "[QUERY]"
+
+type CLI struct {
 	In         io.ReadSeeker
 	Stdout     io.Writer
 	keyCh      chan rune
 	quitCh     chan struct{}
-	filterCh   chan *FilterResult
-	filter     Filter
-	filtered   *FilterResult
+	filterCh   chan filterResult
+	filter     filter
+	filtered   filterResult
 	inputRunes []rune
 	Screen     tcell.Screen
+	mu         sync.Mutex
 }
 
-func New() (*Cli, error) {
+func New() (*CLI, error) {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return nil, err
@@ -46,90 +49,102 @@ func New() (*Cli, error) {
 		return nil, err
 	}
 
-	filter := &FilterImpl{}
+	filter := &cliFilter{}
 
-	app := &Cli{
-		In: reader, Stdout: os.Stdout, // wip
-		keyCh: make(chan rune), Screen: screen,
+	cli := &CLI{
+		In:     reader,
+		Stdout: os.Stdout, // wip
+		keyCh:  make(chan rune), Screen: screen,
 		quitCh:   make(chan struct{}),
-		filterCh: make(chan *FilterResult),
+		filterCh: make(chan filterResult, 1),
 		filter:   filter,
-		filtered: &FilterResult{},
+		filtered: filterResult{},
 	}
-	return app, nil
+	return cli, nil
 }
 
-func (app *Cli) Run() error {
-	go app.handleEvent()
-	go app.handleKeyInput()
-	go app.doFilter()
+func (cli *CLI) Run() error {
+	go cli.handleEvent()
+	go cli.handleKeyInput()
+	go cli.doFilter()
 
-	app.render()
+	cli.render()
 
-	<-app.quitCh
+	<-cli.quitCh
 
-	app.exit()
+	cli.exit()
 
-	fmt.Printf("debug: %s\n", string(app.inputRunes))
-	fmt.Printf("filtered: %v\n", app.filtered)
+	fmt.Printf("debug: %s\n", string(cli.inputRunes))
+	fmt.Printf("filtered: %v\n", cli.filtered)
 
 	return nil
 }
 
-func (app *Cli) handleKeyInput() {
+func (cli *CLI) handleKeyInput() {
 	for {
-		r := <-app.keyCh
+		r := <-cli.keyCh
 
-		app.inputRunes = append(app.inputRunes, r)
-		go app.doFilter()
-		app.render()
+		cli.mu.Lock()
+		cli.inputRunes = append(cli.inputRunes, r)
+		cli.mu.Unlock()
+
+		go cli.doFilter()
+		cli.render()
 	}
 }
 
-func (app *Cli) doFilter() {
+func (cli *CLI) doFilter() {
 	// 前に実行してたやつをキャンセルしたほうがええかも
-
 	context := context.Background()
-	err := app.filter.Run(context, app.In, app.filterCh)
+
+	err := cli.filter.Run(context, cli.In, cli.filterCh)
 	if err != nil {
 		// todo do some handling
 		return
 	}
 
-	result := <-app.filterCh
-	app.filtered = result
-	app.render()
+	result := <-cli.filterCh
+
+	cli.mu.Lock()
+	cli.filtered = result
+	cli.mu.Unlock()
 }
 
-func (app *Cli) render() {
-	query := []rune("[QUERY]")
+func (cli *CLI) render() {
+	query := []rune(queryMarker)
 	queryLen := len(query)
 
 	for i, r := range []rune(query) {
-		app.Screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
+		cli.Screen.SetContent(i, 0, r, nil, tcell.StyleDefault)
 	}
-	for i, r := range app.inputRunes {
-		app.Screen.SetContent(i+queryLen+1, 0, r, nil, tcell.StyleDefault)
+	for i, r := range cli.inputRunes {
+		cli.Screen.SetContent(i+queryLen+1, 0, r, nil, tcell.StyleDefault)
 	}
 
-	for i, line := range app.filtered.Matched {
+	_, y := cli.Screen.Size()
+	matchedLinesHeight := y - 1
+
+	for i, line := range cli.filtered.matched {
+		if i > matchedLinesHeight {
+			break
+		}
 		for x, r := range []rune(line) {
-			app.Screen.SetContent(x, i+1, r, nil, tcell.StyleDefault)
+			cli.Screen.SetContent(x, i+1, r, nil, tcell.StyleDefault)
 		}
 	}
 
-	app.Screen.Show()
+	cli.Screen.Show()
 }
 
-func (app *Cli) handleEvent() {
+func (cli *CLI) handleEvent() {
 	for {
-		ev := app.Screen.PollEvent()
+		ev := cli.Screen.PollEvent()
 
 		switch ev := ev.(type) {
 		case *tcell.EventKey:
 			key := ev.Key()
 			if key == tcell.KeyEscape {
-				close(app.quitCh)
+				close(cli.quitCh)
 				return
 			}
 			if _, isSpecialKey := tcell.KeyNames[key]; isSpecialKey {
@@ -137,17 +152,13 @@ func (app *Cli) handleEvent() {
 				continue
 			}
 			r := ev.Rune()
-			app.keyCh <- r
+			cli.keyCh <- r
 		case *tcell.EventResize:
-			app.Screen.Sync()
+			cli.Screen.Sync()
 		}
 	}
 }
 
-func (app *Cli) parseKey(b []byte) (rune, int) {
-	return utf8.DecodeRune(b)
-}
-
-func (app *Cli) exit() {
-	app.Screen.Fini()
+func (cli *CLI) exit() {
+	cli.Screen.Fini()
 }

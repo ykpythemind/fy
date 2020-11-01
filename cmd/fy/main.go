@@ -10,13 +10,13 @@ import (
 func main() {
 	app, err := fy.New()
 	if err != nil {
-		fmt.Fprint(os.Stdout, err)
+		fmt.Fprint(os.Stderr, err)
 		os.Exit(1)
 	}
 
 	err = app.Run()
 	if err != nil {
-		fmt.Fprint(os.Stdout, err)
+		fmt.Fprint(os.Stderr, err)
 		os.Exit(1)
 	}
 }
