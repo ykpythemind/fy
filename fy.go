@@ -201,6 +201,18 @@ func (cli *CLI) handleEvent() {
 				return
 			}
 
+			if key == tcell.KeyCtrlN {
+				index := cli.current.index
+				go cli.changeCurrent(index + 1)
+				continue
+			}
+
+			if key == tcell.KeyCtrlP {
+				index := cli.current.index
+				go cli.changeCurrent(index - 1)
+				continue
+			}
+
 			if key == tcell.KeyBackspace || key == tcell.KeyBackspace2 || key == tcell.KeyDelete {
 				go cli.backspace()
 				continue
@@ -210,12 +222,31 @@ func (cli *CLI) handleEvent() {
 				// ignore
 				continue
 			}
+
+			// 通常の入力
 			r := ev.Rune()
 			cli.keyCh <- r
 		case *tcell.EventResize:
 			cli.Screen.Sync()
 		}
 	}
+}
+
+func (cli *CLI) changeCurrent(index int) {
+	cli.mu.Lock()
+	matched := cli.matched
+	cli.mu.Unlock()
+
+	if index > len(cli.matched)-1 || index < 0 {
+		return // do nothing
+	}
+
+	ma := matched[index]
+	cli.mu.Lock()
+	cli.current = ma
+	cli.mu.Unlock()
+
+	cli.render()
 }
 
 func (cli *CLI) backspace() {
