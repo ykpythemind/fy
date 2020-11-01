@@ -92,6 +92,7 @@ func (cli *CLI) Run() error {
 	}
 
 	if cli.debug {
+		fmt.Println()
 		fmt.Printf("debug: %s\n", string(cli.inputRunes))
 		fmt.Printf("matched: %v\n", cli.matched)
 	}

@@ -62,8 +62,6 @@ func (f *cliFilter) Run(context context.Context, input string, reader io.ReadSee
 }
 
 func findMatches(input string, lines []string) ([]matched, error) {
-	// https://github.com/mattn/gof/blob/192d3db8502dca43439c3c61ef957869a88e38b9/main.go#L106
-
 	var tmp []matched
 
 	if len(input) == 0 {
@@ -75,6 +73,8 @@ func findMatches(input string, lines []string) ([]matched, error) {
 			}
 		}
 	} else {
+		// https://github.com/mattn/gof/blob/192d3db8502dca43439c3c61ef957869a88e38b9/main.go#L106
+
 		pat := "(?i)(?:.*)("
 		for _, r := range input {
 			pat += regexp.QuoteMeta(string(r)) + ".*?"
