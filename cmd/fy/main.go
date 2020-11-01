@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -8,7 +9,12 @@ import (
 )
 
 func main() {
-	app, err := fy.New()
+	var debug bool
+	flag.BoolVar(&debug, "debug", false, "Enable debug")
+
+	flag.Parse()
+
+	app, err := fy.New(debug)
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
 		os.Exit(1)

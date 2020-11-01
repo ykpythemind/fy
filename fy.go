@@ -16,8 +16,8 @@ import (
 const queryMarker = "[QUERY]"
 
 type CLI struct {
-	In         io.ReadSeeker
-	Stdout     io.Writer
+	input      io.ReadSeeker
+	output     io.Writer
 	keyCh      chan rune
 	quitCh     chan struct{}
 	filterCh   chan []matched
@@ -26,9 +26,10 @@ type CLI struct {
 	inputRunes []rune
 	Screen     tcell.Screen
 	mu         sync.Mutex
+	debug      bool
 }
 
-func New() (*CLI, error) {
+func New(debug bool) (*CLI, error) {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return nil, err
@@ -52,13 +53,14 @@ func New() (*CLI, error) {
 	filter := &cliFilter{}
 
 	cli := &CLI{
-		In:     reader,
-		Stdout: os.Stdout, // wip
+		input:  reader,
+		output: os.Stdout, // wip
 		keyCh:  make(chan rune), Screen: screen,
 		quitCh:   make(chan struct{}),
 		filterCh: make(chan []matched, 1),
 		filter:   filter,
 		matched:  []matched{},
+		debug:    debug,
 	}
 	return cli, nil
 }
@@ -74,8 +76,10 @@ func (cli *CLI) Run() error {
 
 	cli.exit()
 
-	fmt.Printf("debug: %s\n", string(cli.inputRunes))
-	fmt.Printf("matched: %v\n", cli.matched)
+	if cli.debug {
+		fmt.Printf("debug: %s\n", string(cli.inputRunes))
+		fmt.Printf("matched: %v\n", cli.matched)
+	}
 
 	return nil
 }
@@ -97,7 +101,7 @@ func (cli *CLI) doFilter() {
 	// 前に実行してたやつをキャンセルしたほうがええかも
 	context := context.Background()
 
-	err := cli.filter.Run(context, string(cli.inputRunes), cli.In, cli.filterCh)
+	err := cli.filter.Run(context, string(cli.inputRunes), cli.input, cli.filterCh)
 	if err != nil {
 		// todo do some handling
 		return
@@ -140,15 +144,6 @@ func (cli *CLI) render() {
 			}
 		}
 	}
-
-	// for i, ma := range cli.matched {
-	// 	if i > matchedLinesHeight {
-	// 		break
-	// 	}
-	// 	for x, r := range []rune(ma.line) {
-	// 		cli.Screen.SetContent(x, i+1, r, nil, tcell.StyleDefault)
-	// 	}
-	// }
 
 	cli.Screen.Show()
 }
