@@ -37,7 +37,7 @@ func New(debug bool) (*CLI, error) {
 		return nil, err
 	}
 
-	// todo:
+	// todo: readallやめる
 	by, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
 		return nil, err
